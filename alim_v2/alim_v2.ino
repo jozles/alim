@@ -43,9 +43,9 @@ Tlp5615 setVoltsAmps;
 #define TFTCH 10 // ?
 #define TFTCW 6
 
-#define SSTFT   2
+#define SSTFT   6
 #define RSTTFT -1 
-#define DCTFT   3
+#define DCTFT   5
 #define BLTFT  A2
 
 TFT tft = TFT(SSTFT, DCTFT, RSTTFT);
@@ -53,8 +53,8 @@ TFT tft = TFT(SSTFT, DCTFT, RSTTFT);
 /* ------------- Encodeur rotatif -------------------- */
 /*  Utilise 2 entrées d'interruption donc pour UNO digital 2 et 3  */
 
-#define COD_INT1 5
-#define COD_INT2 6
+#define COD_INT1 2
+#define COD_INT2 3
 
 int codeur = 0;   /* la variable mouvementée lors des interruptions
                      codeur est préchargée à la valeur courante du paramètre lorsqu'une saisie est initiée ;
@@ -66,6 +66,7 @@ int oldParam;     /* lorsque la saisie d'un paramètre est initiée avec startsa
 byte etat = 0, test = 0;
 long timeIsrCod = 0; /* timeIsrcod millis() de la précédente Interruption     */
 long t;              /* local de l'Isr pour calcul durée entre interruptions  */
+uint16_t cntIsr=0;   /* cnt isr pour debug */
 
 #define TINCR4 100
 #define TINCR3 200
@@ -79,7 +80,7 @@ long t;              /* local de l'Isr pour calcul durée entre interruptions  *
 /* --------------- poussoir (actif haut) ---------------- */
 
 #define POUSSOIR LED  // même pin que la led
-#define TPOUSS  50
+#define TPOUSS  25
 long tmpPouss = millis();
 int  perPouss = TPOUSS;
 
@@ -266,7 +267,7 @@ void setup() {
   digitalWrite(SSDAC2, HIGH);
 
   SPI.begin();
-  SPI.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+  SPI.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
 
 
 #ifdef INA219
@@ -350,7 +351,6 @@ void loop() {
   /* LED */
 
   if (millis() > (tmpBlink + perBlink)) {
-    Serial.println("blink");
     tmpBlink = millis();
     if (digitalRead(LED) == ONLED) {
       digitalWrite(LED, OFFLED);
@@ -362,8 +362,8 @@ void loop() {
     }
   }
 
-  /* Température 
-   
+  /* Température */
+#ifdef THERMO   
   if(millis() > (tmpTemp + perTemp)) {
     tmpTemp = millis();
     //pinMode(PINTEMP,OUTPUT);digitalWrite(PINTEMP,HIGH);delay(1);digitalWrite(PINTEMP,LOW);
@@ -373,12 +373,14 @@ void loop() {
     thermo.convertDs(PINTEMP);
     pinMode(POUSSOIR, INPUT);
   }
-*/
+#endif
+
   /* poussoir */
 
   if (millis() > (tmpPouss + perPouss)) {
 
     savled = digitalRead(POUSSOIR);
+    pinMode(POUSSOIR,INPUT);
     if (digitalRead(POUSSOIR) == HIGH) {poussoir = ON;} 
     else {poussoir = OFF;}
     pinMode(POUSSOIR, OUTPUT); digitalWrite(POUSSOIR, savled); // pour LED
@@ -394,7 +396,7 @@ void loop() {
       if(!fastTft){
         serialShow(0, volt[ptrdac[0]]); //Serial.println();
         serialShow(1, volt[ptrdac[1]]); //Serial.println();
-        measure.show();
+        //measure.show();
       }
       //Serial.println("rampe2");
       ptrdac[0]++;
@@ -482,7 +484,7 @@ void loop() {
     } 
     affichMenu(numerMenu[levelMenu]);
   }
-/*  ================ pb de ralentissement par là ===============================
+
   if (poussoir == OFF && statusMenu == 3) {       // poussoir relaché -> choix valide 
     switch(modelMenu[numerMenu[levelMenu]]){      // maj de l'indicateur de l'item choisi    
       case 0: menu1(choix1, "*",comptMenu); break;
@@ -521,7 +523,7 @@ void loop() {
     }
     Serial.println();
   }
-*/
+
   /* commandes Serial */
 
 /*  if (Serial.available()&&!fastTft) {
@@ -862,12 +864,12 @@ void serialShow(uint8_t numunit, int consigne)
   oldVoltlu[numunit] = voltlu[numunit];
 
   Serial.print(" dac"); Serial.print(numunit); Serial.print(":"); Serial.print((float)(voltlu[numunit] * 5) / 1024);
-*/   
+*/
   int vx ; 
   if(numunit==0){vx=analogRead(UOUT);
     Serial.print(" out:");
     Serial.print((float)(vx * 5 * 3 * 1.04) / 1024); // tension sortie alim
-    Serial.print("V");
+    Serial.println("V");
   }
   else{vx=analogRead(ILIMIT);
     Serial.print(" ilimit:");

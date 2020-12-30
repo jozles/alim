@@ -8,7 +8,8 @@
 
 #define TLP5615
 
-#define DS18X20
+//#define THERMO
+//#define DS18X20
 
 #define LED 4
 #define ONLED HIGH
