@@ -7,7 +7,7 @@
 char regNames[]={"CONFIG  AIN1OFF AIN1GAINAIN2OFF AIN2GAINCYCCOUNTAIN1OUT AIN2OUT AIN1FIL AIN2FIL STATUS  MASK    CONTROL "};
 uint8_t regCodes[]={CONFIG,AIN1OFF,AIN1GAIN,AIN2OFF,AIN2GAIN,CYCCOUNT,AIN1OUT,AIN2OUT,AIN1FIL,AIN2FIL,STATUS,MASK,CONTROL};
 
-uint8_t spiCs,intPin,csShunt;
+uint8_t portCs,ddrCs,bitCs,intPin,csShunt;
 
 int      i,j;
 byte     data[5];  // buffer registres maxi
@@ -50,21 +50,120 @@ Cs5550::Cs5550()
 {
 }
 
-void Cs5550::config(uint8_t pspiCs,uint8_t pintPin,uint8_t prshunt)
+void Cs5550::regWrite(uint8_t reg,uint32_t data)  
+{ 
+  tfb[0]=reg*2 | REGWR;
+  
+  tfb[1]=(data>>16)&0x000000FF;  
+  tfb[2]=(data>>8)&0x000000FF;   
+  tfb[3]=data&0x000000FF;        
+
+  CS5550_SS_LOW     //digitalWrite(ss, LOW);
+  SPI.transfer(tfb,DATALEN+1);
+  CS5550_SS_HIGH    //digitalWrite(ss, HIGH);
+}
+
+void Cs5550::regRead(uint8_t reg, byte* data)
 {
-  spiCs=pspiCs;
+  reg *= 2;  
+  reg |= REGRD ;
+  tfb[0]=reg;
+  memset(tfb+1,SYNC0,DATALEN);
+
+  CS5550_SS_LOW     //digitalWrite(ss, LOW);
+  SPI.transfer(tfb,DATALEN+1);
+  CS5550_SS_HIGH    //digitalWrite(ss, HIGH);digitalWrite(ss, HIGH);
+
+  memcpy(data,tfb+1,DATALEN);
+}
+
+
+void Cs5550::command(uint8_t cd)  
+{
+  CS5550_SS_LOW     //digitalWrite(ss, LOW);
+
+  SPI.transfer(cd);  
+
+  CS5550_SS_HIGH    //digitalWrite(ss, HIGH);
+}
+
+
+void Cs5550::show()
+{
+  Serial.print("disp/conv/filt/gain5;shunt;kdly ");Serial.print(disp);Serial.print(conv);Serial.print(filt);Serial.print(gain5);Serial.print(";");Serial.print(csShunt);Serial.print(";");Serial.println(kdly);
+  for(int r=0;r<NBREG;r++){
+    Serial.print(r);Serial.print(" ");
+    if(r<10){Serial.print(' ');}
+    hexPrint8(regCodes[r]);Serial.print(" ");
+    for(int l=0;l<REGNLEN;l++){Serial.print(regNames[r*REGNLEN+l]);}Serial.print(" ");
+    regRead(regCodes[r],data);
+    hexPrint24(data);
+    Serial.println();
+  }
+  Serial.println();
+}
+
+void Cs5550::calibrateOffset()
+{
+  Serial.print("Offset calibration running... ");
+  
+  regWrite(STATUS,0xffffff);
+  command(CAL1O);
+  /*while(bitTst(csStatus,DRDY)==0){
+    cs5550RegRead(SS, STATUS,csStatus);
+  }*/
+  delay(2000);
+  command(CAL1);
+
+  command(CAL2O);
+  delay(2000);
+  command(CAL2);
+
+  regWrite(STATUS,0xffffff);
+
+        regWrite( STATUS,0xffffff);
+        command(STARTS);
+        delay(1200);
+        regRead(AIN1FIL,filtd1);
+        ain1f=(uint64_t)cal32(filtd1);                        // 0->2^24
+        ain1f=ain1f*(uint64_t)250000; //MAXREFV;              // *250000 ref uV
+        ain1f=ain1f>>24;
+        offset1=ain1f;
+        
+  Serial.print((float)offset1/1000);Serial.println(" offset calibration complete ");
+}
+
+void Cs5550::calibrateGain()
+{
+  Serial.print("Gain calibration running...");
+  byte csStatus[DATALEN+1];memset(csStatus,0x00,DATALEN);
+  
+  command(CAL1G);
+  while(bitTst(csStatus,DRDY)==0){
+    regRead( STATUS,csStatus);
+  }
+  command(CAL1);
+  Serial.println(" gain calibration complete");
+}
+
+void Cs5550::config(uint8_t pportCs,uint8_t pddrCs,uint8_t pbitCs,uint8_t pintPin,uint8_t prshunt)
+{
+  portCs=pportCs;
+  ddrCs=pddrCs;
+  bitCs=pbitCs;
   intPin=pintPin;
   csShunt=prshunt;
   pinMode(intPin,INPUT_PULLUP);
-  pinMode(spiCs, OUTPUT); digitalWrite(spiCs,HIGH);
+  bitSet(ddrCs,bitCs);   // pinMode(spiCs, OUTPUT); 
+  CS5550_SS_HIGH         // digitalWrite(spiCs,HIGH);
 
     /* INITS */
 
   //cs5550ShowReg();
 
-  regWrite(spiCs,CONFIG,0x000002);     // gain 10 ; clk divide/2
-  regWrite(spiCs,CYCCOUNT,T250MS);
-  regWrite(spiCs,CONTROL,NOCPU);
+  regWrite(CONFIG,0x000002);     // gain 10 ; clk divide/2
+  regWrite(CYCCOUNT,T250MS);
+  regWrite(CONTROL,NOCPU);
   
   //cs5550ShowReg();
 
@@ -74,17 +173,17 @@ void Cs5550::config(uint8_t pspiCs,uint8_t pintPin,uint8_t prshunt)
 car='d';
   if(car=='g'){calibrateOffset();}
   if(car=='d'){
-    regWrite(spiCs, AIN1OFF, cal1Off);
-    regWrite(spiCs, AIN2OFF, cal2Off);
+    regWrite( AIN1OFF, cal1Off);
+    regWrite( AIN2OFF, cal2Off);
     }
 //  car=inch("input g when max current settled ; d default ");
   if(car=='g'){calibrateGain();}
-  if(car=='d'){regWrite(spiCs, AIN1GAIN, cal1Gain);}
+  if(car=='d'){regWrite( AIN1GAIN, cal1Gain);}
 
-  regWrite(spiCs, AIN2GAIN, cal2Gain);
+  regWrite( AIN2GAIN, cal2Gain);
   
-  regWrite(spiCs,STATUS,0xffffff);
-  regWrite(spiCs,MASK,0x000000);
+  regWrite(STATUS,0xffffff);
+  regWrite(MASK,0x000000);
 
   //cs5550ShowReg();
 }
@@ -93,16 +192,16 @@ void Cs5550::ampVolt(float* amp, int* volt)
 {
     if(digitalRead(intPin)==0){
       
-      regRead(SS,STATUS,csStatus);      
+      regRead(STATUS,csStatus);      
       if((csStatus[0]&0x80)==0){
         hexPrint24(csStatus);Serial.println();
-        regWrite(SS, STATUS,0x7fffff);
+        regWrite(STATUS,0x7fffff);
       }
       else {
-        regRead(SS,AIN1FIL,filtd1);
-        regRead(SS,AIN2FIL,filtd2);
-        regWrite(SS, STATUS,0xffffff);
-        command(SS,STARTS);
+        regRead(AIN1FIL,filtd1);
+        regRead(AIN2FIL,filtd2);
+        regWrite( STATUS,0xffffff);
+        command(STARTS);
 
           ain1f=(uint64_t)cal32(filtd1);                        // 0->2^24
           Serial.print((float)ain1f);Serial.print(" ");
@@ -118,102 +217,6 @@ void Cs5550::ampVolt(float* amp, int* volt)
           hexPrint24(filtd2);printFloat(*volt);
       }
     }
-}
-
-void Cs5550::regWrite(uint8_t ss, uint8_t reg,uint32_t data)  
-{ 
-  tfb[0]=reg*2 | REGWR;
-  
-  tfb[1]=(data>>16)&0x000000FF;  
-  tfb[2]=(data>>8)&0x000000FF;   
-  tfb[3]=data&0x000000FF;        
-
-  digitalWrite(ss, LOW);
-  SPI.transfer(tfb,DATALEN+1);
-  digitalWrite(ss, HIGH);
-}
-
-void Cs5550::regRead(uint8_t ss, uint8_t reg, byte* data)
-{
-  reg *= 2;  
-  reg |= REGRD ;
-  tfb[0]=reg;
-  memset(tfb+1,SYNC0,DATALEN);
-
-  digitalWrite(ss, LOW);
-  SPI.transfer(tfb,DATALEN+1);
-  digitalWrite(ss, HIGH);
-
-  memcpy(data,tfb+1,DATALEN);
-}
-
-
-void Cs5550::command(uint8_t ss, uint8_t cd)  
-{
-  digitalWrite(ss, LOW);
-
-  SPI.transfer(cd);  
-
-  digitalWrite(ss, HIGH);
-}
-
-
-void Cs5550::show()
-{
-  Serial.print("disp/conv/filt/gain5;shunt;kdly ");Serial.print(disp);Serial.print(conv);Serial.print(filt);Serial.print(gain5);Serial.print(";");Serial.print(csShunt);Serial.print(";");Serial.println(kdly);
-  for(int r=0;r<NBREG;r++){
-    Serial.print(r);Serial.print(" ");
-    if(r<10){Serial.print(' ');}
-    hexPrint8(regCodes[r]);Serial.print(" ");
-    for(int l=0;l<REGNLEN;l++){Serial.print(regNames[r*REGNLEN+l]);}Serial.print(" ");
-    regRead(SS,regCodes[r],data);
-    hexPrint24(data);
-    Serial.println();
-  }
-  Serial.println();
-}
-
-void Cs5550::calibrateOffset()
-{
-  Serial.print("Offset calibration running... ");
-  
-  regWrite(spiCs,STATUS,0xffffff);
-  command(spiCs,CAL1O);
-  /*while(bitTst(csStatus,DRDY)==0){
-    cs5550RegRead(SS, STATUS,csStatus);
-  }*/
-  delay(2000);
-  command(spiCs,CAL1);
-
-  command(spiCs,CAL2O);
-  delay(2000);
-  command(spiCs,CAL2);
-
-  regWrite(spiCs,STATUS,0xffffff);
-
-        regWrite(spiCs, STATUS,0xffffff);
-        command(spiCs,STARTS);
-        delay(1200);
-        regRead(spiCs,AIN1FIL,filtd1);
-        ain1f=(uint64_t)cal32(filtd1);                        // 0->2^24
-        ain1f=ain1f*(uint64_t)250000; //MAXREFV;              // *250000 ref uV
-        ain1f=ain1f>>24;
-        offset1=ain1f;
-        
-  Serial.print((float)offset1/1000);Serial.println(" offset calibration complete ");
-}
-
-void Cs5550::calibrateGain()
-{
-  Serial.print("Gain calibration running...");
-  byte csStatus[DATALEN+1];memset(csStatus,0x00,DATALEN);
-  
-  command(spiCs,CAL1G);
-  while(bitTst(csStatus,DRDY)==0){
-    regRead(spiCs, STATUS,csStatus);
-  }
-  command(spiCs,CAL1);
-  Serial.println(" gain calibration complete");
 }
 
 bool bitTst(byte* v1,uint32_t v2)

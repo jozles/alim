@@ -81,19 +81,21 @@
 #define ON HIGH
 #define OFF LOW
 
+#define CS5550_SS_LOW  bitClear(portCs,bitCs);
+#define CS5550_SS_HIGH bitSet(portCs,bitCs);
 
 class Cs5550
 {
   public:
     Cs5550();
-    void config(uint8_t pspiCs,uint8_t pintPin,uint8_t prshunt);
+    void config(uint8_t pportCs,uint8_t pddrCs,uint8_t pbitCs,uint8_t pintPin,uint8_t prshunt);
     void ampVolt(float* amp, int* volt);
     void show();
 
   private:
-    void regWrite(uint8_t ss, uint8_t reg,uint32_t data);
-    void regRead(uint8_t ss, uint8_t reg, byte* data);
-    void command(uint8_t ss, uint8_t cd);
+    void regWrite(uint8_t reg,uint32_t data);
+    void regRead(uint8_t reg, byte* data);
+    void command(uint8_t cd);
     void calibrateOffset();
     void calibrateGain();
 };

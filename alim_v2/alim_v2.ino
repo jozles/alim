@@ -32,6 +32,14 @@ Cs5550 measure;
 #ifdef TLP5615
 #include "tlp5615.h"
 Tlp5615 setVoltsAmps;
+#define MAXDAC 1023
+#endif
+#ifdef MCP4921
+#include "mcp4921.h"
+Mcp4921 setVoltsAmps;
+#define MAXDAC 4095
+#define BINV 0.002    // mV/point
+#define BINA 5/4.096/24
 #endif
 
 /* ----------------------- TFT ----------------------- */
@@ -54,7 +62,11 @@ TFT tft = TFT(SSTFT, DCTFT, RSTTFT);
 /*  Utilise 2 entrées d'interruption donc pour UNO digital 2 et 3  */
 
 #define COD_INT1 2
+#define PORT_CODINT1 PORTD
+#define BIT_CODINT1 2
 #define COD_INT2 3
+#define PORT_CODINT2 PORTD
+#define BIT_CODINT2 3
 
 int codeur = 0;   /* la variable mouvementée lors des interruptions
                      codeur est préchargée à la valeur courante du paramètre lorsqu'une saisie est initiée ;
@@ -80,11 +92,14 @@ uint16_t cntIsr=0;   /* cnt isr pour debug */
 /* --------------- poussoir (actif haut) ---------------- */
 
 #define POUSSOIR LED  // même pin que la led
+#define PORT_POUSSOIR PORT_LED
+#define DDR_POUSSOIR DDR_LED
+#define BIT_POUSSOIR BIT_LED
 #define TPOUSS  25
 long tmpPouss = millis();
 int  perPouss = TPOUSS;
 
-/* température */
+/* -------------------  température --------------------- */
 
 #define PINTEMP 17 /* (A3) */
 #define TTEMP 2000  
@@ -92,7 +107,7 @@ long tmpTemp = millis();          // temps dernière température
 int  perTemp = TTEMP;
 float temp=0,oldtemp=0;
 
-/* LED */
+/* ------------------------ LED -------------------------- */
 
 long tmpBlink = millis();         // temps dernier blink
 int  perBlink = 0;
@@ -102,31 +117,36 @@ uint8_t savled;
 
 /* paramètres (volts, amps, periode rampe, step rampe, voltmin rampe, voltmax rampe */
 
-#define NBRAMP 32
-#define NUMMAX 15        /* alim 12V */
-//#define NUMMAX 12      /* alim  9V */
-#define BINTOVOLT 85    // valeur binaire pour 1 volt
+#ifdef  MCP4921
+#define NBRAMP 64
+uint16_t volt[NBRAMP] = {0, 64, 128, 192, 256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024,
+                         1088, 1152, 1216, 1280, 1344, 1408, 1472, 1536, 1600, 1664, 1728, 1792, 1856, 1920, 1984,
+                         128, 192, 256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024,
+                         3072, 3136, 3200, 3264, 3328, 3392, 3456, 3520, 3584, 3648, 3712, 3776, 3840, 3904, 3968, 4032, 4095};
+#endif
+#ifndef MCP4921
+#define NBRAMP 16     // pointeur maxi courant
 uint16_t volt[NBRAMP] = {0, 64, 128, 192, 256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1023};
-#define PTMAXAMP 16     // pointeur maxi courant
-
+#endif                         
 
 #define MAXPERRAMP  10000
-#define MAXSTEPRAMP NUMMAX
+#define MAXSTEPRAMP NBRAMP
 
-int ptrdac[2] = {0, PTMAXAMP};
+int ptrdac[2] = {0, NBRAMP};
 
 #define NBPARAMS 6 // 0=dac volts ; 1=dac amps ; 2=perRamp ; 3=nbStepRamp ; 4=voltsMinRamp ; 5=voltsMaxRamp
 #define NPARAMVOLTS 0   // n° params volts
 #define NPARAMAMPS 1    // n° params amps
 #define NPARAMPERRAMP 2 // n° params période rampe
 #define FASTPERRAMP 500 // mS mini pour fastTft FAUX (sinon les affichages ralentissent la rampe)
-int   params[NBPARAMS]={0,0,5000,NUMMAX,0,9};                                        // valeurs des paramètres
-int   backParams[NBPARAMS];                                                          // save paramètres avant validation,
+int   params[NBPARAMS]={0,MAXDAC,5000,NBRAMP,0,9};                             // valeurs initiale des paramètres
+// 0=volts ; 1=amp ; 2=période rampe ; 3=nbre steps ; 4 vmin ; 5 vmax
+int   backParams[NBPARAMS];                                                            // save paramètres avant validation,
 //long  tmpParams[NBPARAMS]={millis(),millis(),millis(),millis(),millis(),millis()};   // chrono de rafraichissement en saisie
 //long  perParams[NBPARAMS]={20,20,5000,20,20,20};                                     // période refr
 bool  statusParams[NBPARAMS]={FAUX,FAUX,FAUX,FAUX,FAUX,FAUX};                        // si VRAI saisie en cours
 int   minParams[NBPARAMS]={0,0,10,2,0,0};                                            // valeur mini pour saisie
-int   maxParams[NBPARAMS]={volt[NUMMAX-1],volt[PTMAXAMP],MAXPERRAMP,MAXSTEPRAMP,9,9};// valeur maxi pour saisie
+int   maxParams[NBPARAMS]={MAXDAC,MAXDAC,MAXPERRAMP,MAXSTEPRAMP,9,9};// valeur maxi pour saisie
 int   menuParams[NBPARAMS]={0,0,4,4,4,4};                                            // 4 si saisie dans menu + validation
 #define LENUNITPARAM 3
 char* unitParams="mV\0mA\0mS\0  \0mV\0mV\0";                                         // unités des params
@@ -141,18 +161,14 @@ int p0,p1;
 
 uint8_t dac[2] = {UOUT, DACI};
 
-/* menu */
+/* ---------------------- menus ------------------------------ */
 
-#define LENENTVMENU 8  // longueur texte entrées menu vertical
-#define LENENTHMENU 8  // longueur texte entrées menu horizontal
-#define MAXLEVMENU 3   // nombre de niveaux maxi
-#define MAXENTMENU 5   // nombre d'entrée maxi d'un niveau
 
 /* menu 0 */
 char*  lev0Menu  = "tension courant rampe   st/stop \0";
 int    typ0Menu[]= {7,7,1,8};
 int    par0Menu[]= {0,1,2,0};
-bool   cmp0Menu[]= {FAUX,FAUX,FAUX,FAUX};
+bool   cmp0Menu[]= {VRAI,VRAI,FAUX,FAUX};
 /* menu 1 */
 char*  validMenu = "Valider Abandon \0";
 int    typ1Menu[]= {5,6};
@@ -164,34 +180,52 @@ int    typ2Menu[]= {7,7,7,7,3};
 int    par2Menu[]= {2,3,4,5,1};
 bool   cmp2Menu[]= {VRAI,VRAI,VRAI,VRAI,FAUX};
 
-int    modelMenu[]={0,1,0};       // modèle 0 vertical, 1 horizontal
-int    hposMenu[] ={7,10,65+7};   // texte
-int    hpcMenu[]  ={0,0,65};      // curseur
-int    vposMenu[] ={75,110,75};      
-char*  entryMenu[]={lev0Menu,validMenu,rampeMenu};  
-int*   typeMenu[] ={typ0Menu,typ1Menu,typ2Menu};
-                                   /* type d'action par entrée si poussoir ON 
-                                   0 rien, 
-                                   1 accès niveau menu suivant, 
-                                   2 retour niveau précédent sans effet
-                                   3 retour via menu validation
-                                   4 retour niveau précédent 
-                                   5 retour 2 niveaux (menu validation validé)
-                                   6 retour 2 niveaux sans effet
-                                   7 saisie numérique sur ligne menu
-                                   8 start/stop rampe
-                                   */
-int*    paramMenu[]={par0Menu,par1Menu,par2Menu};
+
+#define LENENTVMENU 8  // longueur texte entrées menu vertical
+#define LENENTHMENU 8  // longueur texte entrées menu horizontal
+#define MAXLEVMENU  3  // nombre de niveaux maxi
+#define MAXENTMENU  5  // nombre d'entrée maxi d'un niveau
+
+/* 
+ * 1 table du nombre d'entrées pour chaque menu                                                                          */
 int     nbentMenu[]={4,2,5};
-bool*   compMenu[] ={cmp0Menu,cmp1Menu,cmp2Menu};
+/* 1 table du modèle de menu (0 vertical, 1 horizontal)                                                                  */
+int     modelMenu[]={0,1,0};
+/* 1 table de la position horizontale pour chaque menu                                                                   */
+int     hposMenu[] ={7,10,65+7};   // texte
+/* 1 table de la position verticale pour chaque menu                                                                     */
+int     vposMenu[] ={75,110,75};      
+/* 1 table de la position verticale du curseur pour chaque menu                                                          */
+int     hpcMenu[]  ={0,0,65};    
+/* 1 table de pointeurs sur l'état "sélectionnable" des entrées du menu                                                                */
+bool*   compMenu[] ={cmp0Menu,cmp1Menu,cmp2Menu}; 
+/* 1 table de pointeurs sur les libellés des entrées de menus :                                                          */
+ char*  entryMenu[]={lev0Menu,validMenu,rampeMenu};
+/* 1 table des types (un type/entrée qui détermine ce qui est à faire lorsque l'entrée est sélectionnée)                 */
+ int*   typeMenu[] ={typ0Menu,typ1Menu,typ2Menu};               
+/*                     0 rien, 
+ *                     1 accès niveau menu suivant, 
+ *                     2 retour niveau précédent sans effet
+ *                     3 retour via menu validation
+ *                     4 retour niveau précédent 
+ *                     5 retour 2 niveaux (menu validation validé)
+ *                     6 retour 2 niveaux sans effet
+ *                     7 saisie numérique sur ligne menu (par ex volts, ampères, nbre steps etc)
+ *                     8 start/stop rampe
+ * 1 table des paramètres :                                                                                                      
+ * si type 7 le n° du param à valoriser ; si type 1 le n° du menu suivant ; si type 3 le n° du menu auquel revenir          */
+int*    paramMenu[]={par0Menu,par1Menu,par2Menu};
+
+ /* des pointeurs */
+int     levelMenu=-1;  // niveau du menu courant (0 à n) ; pointe dans les piles
+int     choixMenu[MAXLEVMENU]={0,0,0};       // pile des choix (n° de l'entrée choisie)
+int     numerMenu[MAXLEVMENU]={0,0,0};       // pile des menus choisis 
+
 
 //              *(typeMenu[numerMenu[levelMenu]]+choix1)
 //              *(entryMenu[numerMenu[levelMenu]]+nbitem*LENENTHMENU+j)
 //              nbentMenu[numerMenu[levelMenu]]
 
-int     levelMenu=-1;  // niveau du menu courant (0 à n) ; pointe dans les piles
-int     choixMenu[MAXLEVMENU]={0,0,0};       // pile des choix (n° de l'entrée choisie)
-int     numerMenu[MAXLEVMENU]={0,0,0};       // pile des menus choisis 
 
 #define LENCOMP  6     // longueur chaine complémentaire
 char    comptMenu[MAXENTMENU*LENCOMP+1]; // 4*6
@@ -209,7 +243,7 @@ int  perAff   = TAFF;
 bool unefois  = FAUX;
 int vcollector = 0, vcollectorM = 0;
 float iout = 0, ioutM = 0, vout = 0, voutM = 0;
-char text0[32], text1[8];
+char text0[32], text1[12];
 
 /* divers  */
 
@@ -224,7 +258,7 @@ int voltout[2], oldVoltout[2];
 float a, a0, b, b0, c, c0;
 bool fastTft  = FAUX;       /* si VRAI, rampe rapide en cours, pas de maj de l'affichage */
 long tmpRamp=millis();      // temps dernier step rampe 
-bool arretRampe = FAUX;     /* si VRAI pas de rampe en cours */
+bool arretRampe = VRAI;     /* si VRAI pas de rampe en cours */
 bool show     = FAUX;
 bool testDaci = FAUX;
 bool poussoir = OFF;
@@ -247,8 +281,6 @@ void menu20();                                                          // menu 
 void menu2(uint8_t numitem, char* arrow);                               // 1 item
 void effaceMenu2();
 void choixCodeur(int* choix, int* prechoix);      // saisie du codeur pour le choix dans les menus
-void saisieVolts();
-void saisieAmps();
 void saisiePerRamp();
 void startSaisie(bool fast,int numunit,int menu);
 char* paramItem(int value,char* unit);
@@ -277,7 +309,7 @@ void setup() {
 #endif // INA219
 
 #ifdef CS5550
-  measure.config(SSADC,INTADC,RSHUNT);
+  measure.config(PORT_SSADC,DDR_SSADC,BIT_SSADC,INTADC,RSHUNT);
 #endif // CS5550
 
   /* Timer 1 */
@@ -310,7 +342,6 @@ pinMode(BLTFT,OUTPUT);digitalWrite(BLTFT,HIGH);
   tft.setRotation(3);
   tft.setTextColor(0xFFFF, 0x0000);
   tft.setTextSize(1);  
-  //printAtTft(110,0,text0);
   tft.setCursor(10, 10);
   tft.print(text0);
 
@@ -320,12 +351,15 @@ Serial.print(" 1");
 
   ptrdac[0]=0;
   setVoltsAmps.config(SSDAC1,SSDAC2);
-  setVoltsAmps.write(0,volt[ptrdac[0]]);    // init tension 0
-  ptrdac[1]=PTMAXAMP-1;
-  setVoltsAmps.write(1,volt[ptrdac[1]]);    // init courant max
-  params[NPARAMAMPS]=volt[ptrdac[1]];
-  delay(1000);                              // conversions
+  setVoltsAmps.write(0,0);          // init tension 0
+  ptrdac[1]=NBRAMP-1;
+  setVoltsAmps.write(1,MAXDAC);     // init courant max
+  
+  delay(1000);                      // conversions
   showTft();delay(1000);
+
+//while(1){digitalWrite(LED,HIGH);delay(50);digitalWrite(LED,LOW);delay(950);}
+
 
   /* encoder start */
   attachInterrupt(digitalPinToInterrupt(COD_INT1), isrCod, CHANGE);
@@ -379,11 +413,12 @@ void loop() {
 
   if (millis() > (tmpPouss + perPouss)) {
 
-    savled = digitalRead(POUSSOIR);
-    pinMode(POUSSOIR,INPUT);
+    savled = bitRead(PORT_POUSSOIR,BIT_POUSSOIR); //digitalRead(POUSSOIR);
+    bitClear(DDR_POUSSOIR,BIT_POUSSOIR); //pinMode(POUSSOIR,INPUT);
     if (digitalRead(POUSSOIR) == HIGH) {poussoir = ON;} 
     else {poussoir = OFF;}
-    pinMode(POUSSOIR, OUTPUT); digitalWrite(POUSSOIR, savled); // pour LED
+    //pinMode(POUSSOIR, OUTPUT); digitalWrite(POUSSOIR, savled); // pour LED
+    bitSet(DDR_POUSSOIR,BIT_POUSSOIR);if(savled!=0){bitSet(PORT_POUSSOIR,BIT_POUSSOIR);} else bitClear(PORT_POUSSOIR,BIT_POUSSOIR);
     tmpPouss = millis();
   }
   
@@ -400,7 +435,7 @@ void loop() {
       }
       //Serial.println("rampe2");
       ptrdac[0]++;
-      if (ptrdac[0] >= NUMMAX) {
+      if (ptrdac[0] >= NBRAMP) {
         ptrdac[0] = 0;
       }
       params[NPARAMVOLTS] = volt[ptrdac[0]];
@@ -411,7 +446,7 @@ void loop() {
       //Serial.print("C ");
       serialShow(1, volt[ptrdac[1]]); //Serial.println();
       ptrdac[1]++;
-      if (ptrdac[1] >= PTMAXAMP) {
+      if (ptrdac[1] >= MAXDAC) {
         ptrdac[1] = 0;
       }
       setVoltsAmps.write(1, volt[ptrdac[1]]);
@@ -681,8 +716,8 @@ void saisieValCodeur(int* valcodeur, int numunit)    /* valcodeur sortie modifi�
   }
 
   switch(numunit){
-    case 0: setVoltsAmps.write(numunit,*valcodeur);break;   // volts
-    case 1: setVoltsAmps.write(numunit,*valcodeur);break;   // amps
+    case 0: params[0]=*valcodeur;break; //setVoltsAmps.write(numunit,*valcodeur);break;   // volts
+    case 1: params[1]=*valcodeur;break; //setVoltsAmps.write(numunit,*valcodeur);break;   // amps
     case 2: perRampChg=VRAI;break;                // periode rampe
     case 3: stepRampChg=VRAI;break;               // nb step rampe
     default:break;
@@ -714,13 +749,14 @@ char* paramItem(int value,char* unit)
 
 void showTft()  // récupération valeurs et affichage Tft
 {
+/*  
   if(!fastTft){
     vout = (float)(analogRead(UOUT) * 5 * 3) / 1024 + 0.05;
     if(voutM==0){voutM=vout;}
     voutM = (voutM * 4 + vout) / 5; 
     if (abs(vout - voutM) > voutM / 50) {
-      voutM = vout;}
-    measure.ampVolt(&iout, &vcollector);
+      voutM = vout;}      
+    measure.ampVolt(&iout, &vcollector);                        // ina219 shunt on NPN collector
     if(ioutM==0){ioutM=iout;}
     ioutM = (ioutM * 4 + iout) / 5; 
     if (abs(iout - ioutM) > ioutM / 50) {
@@ -732,6 +768,9 @@ void showTft()  // récupération valeurs et affichage Tft
     }
   }
   affTftVoltAmp(voutM, ioutM, vcollectorM, (float)(analogRead(dac[1]) * 5) / 1024, (float)(analogRead(ILIMIT) * 5) / 1024);
+*/  
+  affTftVoltAmp(0, 0, 0,(float)params[0]*BINV, (float)params[1]*BINA);
+
 }
 
 void printAtTft(uint8_t posx,uint8_t posy,char* text)
@@ -744,6 +783,7 @@ void printAtTft(uint8_t posx,uint8_t posy,char* text)
 void affTftVoltAmp(float volts, float mamp, int vcollector, float dac1, float ilimit)
 /* affichage Tft hors menu */
 {
+Serial.println("\nshowtft 0"); 
   tft.setTextColor(0xFFFF, 0x0000);
   tft.setRotation(3);
 
@@ -751,44 +791,44 @@ void affTftVoltAmp(float volts, float mamp, int vcollector, float dac1, float il
 
   if(!fastTft){
     memcpy(text0, '\0', 32); memcpy(text1, '\0', 8);
-    dtostrf(volts, 5, 2, text0);
+    dtostrf(volts, 5, 2, text0);                              // output voltage
     tft.setTextSize(2);
     printAtTft(0,VPOSVA,text0);
 /* mamps */
-    dtostrf(mamp, 7, 2, text0);
+    dtostrf(mamp, 7, 2, text0);                               // output current
     printAtTft(70,VPOSVA,text0);
   }
-  
+Serial.println("showtft 1");   
   tft.setTextSize(1);
 
 /* puissance */
 
   if(!fastTft){
     memcpy(text1, '\0',8);
-    dtostrf(volts*mamp/1000, 2, 3, text1);
+    dtostrf(volts*mamp/1000, 2, 3, text1);                    // output power
     strcpy(text0,"load ");strcat(text0,text1);strcat(text0,"W   trans ");
     memcpy(text1, '\0', 8);
     dtostrf(((vcollector/1000)-volts)*mamp/1000, 2, 2, text1);
     strcat(text0,text1);strcat(text0,"W");
     printAtTft(0,VPOSVA+20,text0);
   }
-  
+Serial.println("showtft 2"); 
   uint8_t pos=10;
   if (!unefois) {
     unefois = VRAI;
-    strcpy(text0, "collec  dac_A  v_Ilimit");
+    strcpy(text0, "collec  dac_V  I_limit");
     printAtTft(0,pos,text0);
   }
-
+Serial.println("showtft 3");delay(100); 
 /* collector/dac amps/limit */
 
   if(!fastTft){
-    dtostrf(vcollector, 4, 0, text0); strcat(text0, "mV ");
-    dtostrf(dac1, 5, 3, text1); strcat(text0, text1); strcat(text0, "V ");
-    dtostrf(ilimit, 5, 3, text1); strcat(text1, "V"); strcat(text0, text1);
+    dtostrf(vcollector, 4, 0, text0); strcat(text0, "mV ");    
+    dtostrf(dac1, 5, 3, text1); strcat(text0, text1); strcat(text0, "V  ");          // input voltage
+    dtostrf(ilimit, 5, 3, text1); strcat(text1, "mA"); strcat(text0, text1);         // input current
     printAtTft(0,pos+10,text0);
   }
-  
+Serial.println("showtft 4");delay(100); 
 /* menu */
 
   if(menuChg){
@@ -797,7 +837,7 @@ void affTftVoltAmp(float volts, float mamp, int vcollector, float dac1, float il
     dtostrf(statusMenu, 1, 0, text1); strcat(text1, ")"); strcat(text0, text1);
     printAtTft(141,pos,text0);
   }
-  
+Serial.println("showtft 5");   
 /* température trans */
 
   if(tempChg){
@@ -805,6 +845,7 @@ void affTftVoltAmp(float volts, float mamp, int vcollector, float dac1, float il
     dtostrf(temp, 2, 1, text0); strcat(text0, ".C");
     printAtTft(0,pos-10,text0);
   }
+Serial.println("showtft end");  
 }
 
 
