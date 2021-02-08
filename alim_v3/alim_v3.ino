@@ -62,11 +62,11 @@ TFT tft = TFT(SSTFT, DCTFT, RSTTFT);
 /*  Utilise 2 entrées d'interruption donc pour UNO digital 2 et 3  */
 
 #define COD_INT1 2
-#define PORT_COD_INT1 PORTD
-#define BIT_COD_INT1 2
+//#define PORT_COD_INT1 PORTD                    // bitRead() ne lit pas les ports ; utilisez digitalRead
+//#define BIT_COD_INT1 2
 #define COD_INT2 3
-#define PORT_COD_INT2 PORTD
-#define BIT_COD_INT2 3
+//#define PORT_COD_INT2 PORTD
+//#define BIT_COD_INT2 3
 
 int codeur = 0;     // la variable mouvementée lors des interruptions
                     // codeur est préchargée à la valeur courante de la valeur lorsqu'une saisie est initiée ;
@@ -93,7 +93,7 @@ uint16_t cntIsr=0;   /* cnt isr pour debug */
 
 #define POUSSOIR LED  // même pin que la led
 #define PORT_POUSSOIR PORT_LED
-#define DDR_POUSSOIR DDR_LED
+#define DDR_POUSSOIR DDR_LED                             // bitRead() ne lit pas les ports ; utiliser digitalRead
 #define BIT_POUSSOIR BIT_LED
 #define TPOUSS  25
 long tmpPouss = millis();
@@ -112,8 +112,8 @@ float temp=0,oldtemp=0;
 long tmpBlink = millis();         // temps dernier blink
 int  perBlink = 0;
 uint8_t savled;
-#define TBLINKON 40
-#define TBLINKOFF 1960
+#define TBLINKON 10
+#define TBLINKOFF 1990
 
 /* valeurs (volts, amps, periode rampe, step rampe, voltmin rampe, voltmax rampe */
 
@@ -153,11 +153,11 @@ int p0,p1;
 
 /* analog inputs */
 
-#define UOUT   0  // tension sortie alim
-#define ILIMIT 1  // tension amplifiée de la mesure du courant pour limiteur
-#define DACI   2  // sortie DAC Courant
+#define NBDACS  2
+#define DACVOLT 0   // DAC VOLTS
+#define DACAMPS 1   // DAC AMPS
 
-uint8_t dac[2] = {UOUT, DACI};
+//uint8_t dac[NBDACS] = {UOUT, DACI};                  // numunit pour mcp4921
 
 /* ---------------------- menus ------------------------------ 
  *  mécanisme 
@@ -321,7 +321,7 @@ void setup() {
 #endif // INA219
 
 #ifdef CS5550
-  measure.config(PORT_SSADC,DDR_SSADC,BIT_SSADC,INTADC,RSHUNT);
+  //measure.config(PORT_SSADC,DDR_SSADC,BIT_SSADC,INTADC,RSHUNT);
 #endif // CS5550
 
   /* TFT */
@@ -338,8 +338,6 @@ pinMode(BLTFT,OUTPUT);digitalWrite(BLTFT,HIGH);
   tft.setTextSize(1);  
   tft.setCursor(10, 10);
   tft.print(text0);
-
-Serial.print(" 1");
 
   /* DACs TENSION & COURANT */
 
@@ -405,11 +403,11 @@ void loop() {
   if (millis() > (tmpPouss + perPouss)) {
 
     savled = bitRead(PORT_POUSSOIR,BIT_POUSSOIR); //digitalRead(POUSSOIR);
-    bitClear(DDR_POUSSOIR,BIT_POUSSOIR); //pinMode(POUSSOIR,INPUT);
-    if (bitRead(PORT_POUSSOIR,BIT_POUSSOIR) == HIGH) {poussoir = ON;} 
+    bitClear(DDR_POUSSOIR,BIT_POUSSOIR);  //pinMode(POUSSOIR,INPUT);
+    if (digitalRead(POUSSOIR) == HIGH) {poussoir = ON;} 
     else {poussoir = OFF;}
     
-    bitSet(DDR_POUSSOIR,BIT_POUSSOIR);if(savled!=0){bitSet(PORT_POUSSOIR,BIT_POUSSOIR);} else bitClear(PORT_POUSSOIR,BIT_POUSSOIR);
+    bitSet(DDR_POUSSOIR,BIT_POUSSOIR);if(savled!=0){bitSet(PORT_POUSSOIR,BIT_POUSSOIR);}  // else bitClear(PORT_POUSSOIR,BIT_POUSSOIR);
     tmpPouss = millis();
   }
   
@@ -460,7 +458,7 @@ void loop() {
   for(int i=0;i<NBVALEURS;i++){
     if(statusValeurs[i] && (valeurs[i] != codeur)) {saisieValCodeur(&valeurs[i],i);      // saisie en cours sur la valeur i et la valeur a changé dans codeur
                                                                                          // donc maj codeur->valeurs[i]
-      Serial.print(" codeur ");Serial.print(codeur);Serial.print(" param");Serial.print(i);Serial.print(" ");Serial.println(valeurs[i]);  
+      //Serial.print(" codeur ");Serial.print(codeur);Serial.print(" param");Serial.print(i);Serial.print(" ");Serial.println(valeurs[i]);  
       if(i==NVALEURPERRAMP && valeurs[i]<FASTPERRAMP){fastTft=VRAI;}
       else {fastTft=FAUX;}
       if(i!=NVALEURVOLTS && i!=NVALEURAMPS){                                                         // saisie en cours sur param rampe
@@ -480,7 +478,7 @@ void loop() {
       "choix1 ou 2" variable de l'option courante   
       "prechoix1 ou 2" choix précédent (pour effacer le curseur)
   */
-  if (statusMenu > 0){choixCodeur(&choix1,&prechoix1);}  
+  if (statusMenu > 0 && statusMenu<90){choixCodeur(&choix1,&prechoix1);}
 
   /* menu */
   
@@ -492,7 +490,7 @@ void loop() {
   if (poussoir == OFF && statusMenu == 1) {       // poussoir relaché -> scrutation codeur 
     statusMenu = 2;  menuChg=VRAI;
     Serial.println("M2");
-    delay(100);
+    //delay(100);
   }
 
   if ((poussoir == ON  && statusMenu == 0) || statusMenu==4) {       // appui du poussoir -> affichage menu 
@@ -521,7 +519,7 @@ void loop() {
     statusMenu = 4;  menuChg=VRAI;
     m1=numerMenu[levelMenu]; // numéro du menu courant
     Serial.print("M4 choix1=");Serial.print(choix1);Serial.print(" menu=");Serial.print(m1);Serial.print(" type=");Serial.print(*(typeMenu[m1]+choix1));
-    Serial.print(" paramMenu=");Serial.print(*(paramMenu[m1]+choix1));
+    //Serial.print(" paramMenu=");Serial.print(*(paramMenu[m1]+choix1));
     switch(*(typeMenu[m1]+choix1)){
       case 1: choixMenu[levelMenu]=choix1;
               entreMenu();initMenu(m1);
@@ -539,10 +537,13 @@ void loop() {
       case 6: levelMenu--;m1=numerMenu[levelMenu];
               restoreMenu();affichMenu(m1);effaceLigneFin(TFTH-TFTCH-4);effaceLigneFin(TFTH-TFTCH+2);
               break; // back 2 niveaux sans effet
-      case 7: startSaisie(FAUX,*(paramMenu[m1]+choix1),0);      // (paramMenu[m1] pointe la table des paramètres du menu courant
+      case 7: statusMenu = 90;                                  // saisie numérique en cours
+              startSaisie(FAUX,*(paramMenu[m1]+choix1),0);      // (paramMenu[m1] pointe la table des paramètres du menu courant
                                                                 // (paramMenu[m1]+choix1 pointe le paramètre de l'entrée courante du menu courant
                                                                 //    donc le numéro de valeur (volt/amp/periode etc)
-              Serial.print(" valeur=");Serial.print(valeurs[*(paramMenu[m1]+choix1)]);Serial.print(" codeur=");Serial.print(codeur);
+                                                                // codeur est préchargé puis mis à jour par la rotation
+              Serial.print(" -- init saisie ; valeur=");Serial.print(valeurs[*(paramMenu[m1]+choix1)]);Serial.print(" codeur=");Serial.print(codeur);
+              delay(3);
               break; // saisie num
       case 8: arretRampe = !arretRampe;statusMenu=1;
               //Serial.print(" Rampe ");Serial.println(arretRampe);
@@ -552,6 +553,20 @@ void loop() {
     }
     Serial.println();
   }
+ 
+  if (poussoir == ON && statusMenu == 90) {          // poussoir relaché -> saiise numérique valide 
+                                                      // ajouter menu de validation horizontal (">Valid  Annul")
+    Serial.print("M90 -- transfert ; valeur=");Serial.print(valeurs[*(paramMenu[m1]+choix1)]);Serial.print(" codeur=");Serial.println(codeur);
+    valeurs[*(paramMenu[m1]+choix1)]=codeur;          // si "Valid" il faut transférer codeur dans la valeur 
+                                                      // et la valeur dans le DAC
+    switch(*(paramMenu[m1]+choix1)){                  // 0=dac volts ; 1=dac amps ; 2=perRamp ; 3=nbStepRamp ; 4=voltsMinRamp ; 5=voltsMaxRamp
+      case 0:setVoltsAmps.write(DACVOLT,valeurs[*(paramMenu[m1]+choix1)]);break;
+      case 1:setVoltsAmps.write(DACAMPS,valeurs[*(paramMenu[m1]+choix1)]);break;
+      default:break;          
+    }
+    statusMenu = 0;  menuChg=VRAI;
+  }
+
 
   /* commandes Serial */
 
@@ -624,8 +639,8 @@ void menu1(int numitem, char* arrow,char* complt)                 // affiche une
     item[j+LENENTHMENU] = complt[numitem * LENCOMP +j];           // chaine complémentaire -> item[]
   } item[LENENTHMENU+LENCOMP] = '\0';
   
-  Serial.print(" menu1(");Serial.print(item);Serial.print(",");
-  Serial.print(arrow[0]);Serial.println(") ");
+  //Serial.print(" menu1(");Serial.print(item);Serial.print(",");
+  //Serial.print(arrow[0]);Serial.println(") ");
 /*  Serial.print(levelMenu,HEX);Serial.print("-");Serial.print(numerMenu[levelMenu]);Serial.print("-");
   for(int j=0;j<12;j++){Serial.print(*(entryMenu[numerMenu[levelMenu]]+j));};Serial.println(); */
   tft.setTextSize(1);
@@ -656,8 +671,8 @@ void menu2(uint8_t numitem, char* arrow)
 
   int k0=(TFTW-nbentMenu[m0]*LENENTVMENU*TFTCW)/(nbentMenu[m0]+1);   // intervalle horizontal
   int k=LENENTVMENU*TFTCW+k0;                                        // pas horizontal
-  Serial.print("menu2(");Serial.print(item);Serial.print(", ");Serial.print(numitem); Serial.print(", ");
-  Serial.print(k0);Serial.print(", ");Serial.print(k);Serial.print(", ");Serial.print(arrow[0]);Serial.println(") ");
+  //Serial.print("menu2(");Serial.print(item);Serial.print(", ");Serial.print(numitem); Serial.print(", ");
+  //Serial.print(k0);Serial.print(", ");Serial.print(k);Serial.print(", ");Serial.print(arrow[0]);Serial.println(") ");
 
   tft.setTextSize(1);
   tft.setCursor(k0+numitem*k,TFTH-TFTCH+2);tft.print(item);
@@ -728,10 +743,10 @@ void startSaisie(bool fast,int numunit,int menu)  // débute la saisie d'un para
 {
   fastTft    = fast;
   memset(statusValeurs,FAUX,NBVALEURS);             // désactive la saisie sur tous les valeurs[]
-  statusValeurs[numunit]=VRAI;                     // active la saisie sur valeurs[numunit]
-  statusMenu = menu;  menuChg=VRAI;
+  statusValeurs[numunit]=VRAI;                      // active la saisie sur valeurs[numunit]
+  //statusMenu = menu;  menuChg=VRAI;
   oldValeur   = valeurs[numunit];                   // sauve la valeur
-  codeur     = valeurs[numunit];                   // charge le codeur
+  codeur     = valeurs[numunit];                    // charge le codeur
   timeIsrCod = 0;
 
   /* maintenant les mouvements du codeur modifient la variable codeur depuis la valeur initiale valeurs[numunit] 
@@ -806,7 +821,7 @@ void affTftCurrData(float outVolts, float outAmps, int vcollector, float reqVolt
   }
 
   tft.setTextSize(1);
-    Serial.print(" ");Serial.print(micros()-cdt);
+    //Serial.print(" ");Serial.print(micros()-cdt);
 /* puissance */
 
   if(!fastTft && rfrAff==2){
@@ -818,7 +833,7 @@ void affTftCurrData(float outVolts, float outAmps, int vcollector, float reqVolt
     strcat(text0,"W");
     printAtTft(0,VPOSVA+20,text0);
   }
-  Serial.print(" ");Serial.print(micros()-cdt);
+  //Serial.print(" ");Serial.print(micros()-cdt);
   uint8_t pos=10;
   if (!unefois) {
     unefois = VRAI;
@@ -834,7 +849,7 @@ void affTftCurrData(float outVolts, float outAmps, int vcollector, float reqVolt
     dtostrf(reqAmps, 5, 3, text1); strcat(text1, "mA"); strcat(text0, text1);          // current
     printAtTft(0,pos+10,text0);
   }
-  Serial.print(" ");Serial.print(micros()-cdt);
+  //Serial.print(" ");Serial.print(micros()-cdt);
 /* menu */
 
   if(menuChg){
@@ -852,7 +867,7 @@ void affTftCurrData(float outVolts, float outAmps, int vcollector, float reqVolt
     dtostrf(temp, 2, 1, text0); strcat(text0, ".C");
     printAtTft(0,pos-10,text0);
   }
-  Serial.print(" aTCD=");Serial.println(micros()-cdt);
+  //Serial.print(" aTCD=");Serial.println(micros()-cdt);
 }
 
 
@@ -909,7 +924,7 @@ void serialShow(uint8_t numunit, int consigne)
   oldVoltlu[numunit] = voltlu[numunit];
 
   Serial.print(" dac"); Serial.print(numunit); Serial.print(":"); Serial.print((float)(voltlu[numunit] * 5) / 1024);
-*/
+
   int vx ; 
   if(numunit==0){vx=analogRead(UOUT);
     Serial.print(" out:");
@@ -921,7 +936,7 @@ void serialShow(uint8_t numunit, int consigne)
     Serial.print((float)(vx * 5) / 1024);            // tension sortie DACI
     Serial.println("V");  
   }
- 
+*/ 
 }
 
 
@@ -977,10 +992,11 @@ void codIntIncrA()
 
 void isrCod()
 {
-  etat = etat << 1 | bitRead(PORT_COD_INT1,BIT_COD_INT1);
-  etat = etat << 1 | bitRead(PORT_COD_INT2,BIT_COD_INT2);
+  etat = etat << 1 | digitalRead(COD_INT1);
+  etat = etat << 1 | digitalRead(COD_INT2);
 
-  test = (etat | B11110000) - B11110000; //test des 4 bits de poids faible
+  //test = (etat | B11110000) - B11110000; //test des 4 bits de poids faible
+  test=etat&0x0f;
 
   if (test == B0111 ) {
     codIntIncrA();

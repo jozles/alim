@@ -48,8 +48,8 @@ Mcp4921 setVoltsAmps;
 
 #define TFTH 128
 #define TFTW 160
-#define TFTCH 10 // ?
-#define TFTCW 6
+#define TFTCH 10      // points hauteur caractères
+#define TFTCW 6       // points largeur caractères
 
 #define SSTFT   6
 #define RSTTFT -1 
@@ -69,10 +69,10 @@ TFT tft = TFT(SSTFT, DCTFT, RSTTFT);
 #define BIT_CODINT2 3
 
 int codeur = 0;   /* la variable mouvementée lors des interruptions
-                     codeur est préchargée à la valeur courante du paramètre lorsqu'une saisie est initiée ;
-                     à tout moment codeur peut être lu pour valoriser le paramètre
+                     codeur est préchargée à la valeur courante de la valeur lorsqu'une saisie est initiée ;
+                     à tout moment codeur peut être lu pour valoriser la valeur
                   */ 
-int oldParam;     /* lorsque la saisie d'un paramètre est initiée avec startsaisie(), la valeur du param
+int oldValeur;     /* lorsque la saisie d'une valeur est initiée avec startsaisie(), la valeur 
                      est archivée pour permettre sa restauration si la saisie n'est pas validée.
                   */
 byte etat = 0, test = 0;
@@ -115,41 +115,40 @@ uint8_t savled;
 #define TBLINKON 40
 #define TBLINKOFF 1960
 
-/* paramètres (volts, amps, periode rampe, step rampe, voltmin rampe, voltmax rampe */
+/* valeurs (volts, amps, periode rampe, step rampe, voltmin rampe, voltmax rampe */
 
 #ifdef  MCP4921
-#define NBRAMP 64
-uint16_t volt[NBRAMP] = {0, 64, 128, 192, 256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024,
-                         1088, 1152, 1216, 1280, 1344, 1408, 1472, 1536, 1600, 1664, 1728, 1792, 1856, 1920, 1984,
-                         128, 192, 256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024,
-                         3072, 3136, 3200, 3264, 3328, 3392, 3456, 3520, 3584, 3648, 3712, 3776, 3840, 3904, 3968, 4032, 4095};
+#define NBRAMP 64     // pointeur maxi rampe
+uint16_t volt[NBRAMP+1] = {   0,   64,  128,  192,  256,  320,  384,  448,  512,  576,  640,  704,  768,  832,  896,
+                          960, 1024, 1088, 1152, 1216, 1280, 1344, 1408, 1472, 1536, 1600, 1664, 1728, 1792, 1856,
+                         1920, 1984, 2048, 2112, 2176, 2240, 2304, 2368, 2432, 2496, 2560, 2624, 2688, 2752, 2816,
+                         2880, 2944, 3008, 3072, 3136, 3200, 3264, 3328, 3392, 3456, 3520, 3584, 3648, 3712, 3776,
+                         3840, 3904, 3968, 4032, 4095};
 #endif
 #ifndef MCP4921
-#define NBRAMP 16     // pointeur maxi courant
-uint16_t volt[NBRAMP] = {0, 64, 128, 192, 256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1023};
+#define NBRAMP 16     // pointeur rampe
+uint16_t volt[NBRAMP+1] = {0, 64, 128, 192, 256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1023};
 #endif                         
 
 #define MAXPERRAMP  10000
 #define MAXSTEPRAMP NBRAMP
 
-int ptrdac[2] = {0, NBRAMP};
+int ptrdac[2] = {0, NBRAMP};       // ptrdac[0] n° du step courant de rampe tension ; ptrdac[1] courant
 
-#define NBPARAMS 6 // 0=dac volts ; 1=dac amps ; 2=perRamp ; 3=nbStepRamp ; 4=voltsMinRamp ; 5=voltsMaxRamp
-#define NPARAMVOLTS 0   // n° params volts
-#define NPARAMAMPS 1    // n° params amps
-#define NPARAMPERRAMP 2 // n° params période rampe
+#define NBVALEURS 6 // 0=dac volts ; 1=dac amps ; 2=perRamp ; 3=nbStepRamp ; 4=voltsMinRamp ; 5=voltsMaxRamp
+#define NVALEURVOLTS  0     // n° valeur volts
+#define NVALEURAMPS   1     // n° valeur amps
+#define NVALEURPERRAMP 2     // n° valeur période rampe
 #define FASTPERRAMP 500 // mS mini pour fastTft FAUX (sinon les affichages ralentissent la rampe)
-int   params[NBPARAMS]={0,MAXDAC,5000,NBRAMP,0,9};                             // valeurs initiale des paramètres
+int     valeurs[NBVALEURS]={0,MAXDAC,5000,NBRAMP,0,9};                                    // valeurs initiales
 // 0=volts ; 1=amp ; 2=période rampe ; 3=nbre steps ; 4 vmin ; 5 vmax
-int   backParams[NBPARAMS];                                                            // save paramètres avant validation,
-//long  tmpParams[NBPARAMS]={millis(),millis(),millis(),millis(),millis(),millis()};   // chrono de rafraichissement en saisie
-//long  perParams[NBPARAMS]={20,20,5000,20,20,20};                                     // période refr
-bool  statusParams[NBPARAMS]={FAUX,FAUX,FAUX,FAUX,FAUX,FAUX};                        // si VRAI saisie en cours
-int   minParams[NBPARAMS]={0,0,10,2,0,0};                                            // valeur mini pour saisie
-int   maxParams[NBPARAMS]={MAXDAC,MAXDAC,MAXPERRAMP,MAXSTEPRAMP,9,9};// valeur maxi pour saisie
-int   menuParams[NBPARAMS]={0,0,4,4,4,4};                                            // 4 si saisie dans menu + validation
-#define LENUNITPARAM 3
-char* unitParams="mV\0mA\0mS\0  \0mV\0mV\0";                                         // unités des params
+int   backValeurs[NBVALEURS];                                                             // save valeurs avant validation,
+bool  statusValeurs[NBVALEURS]={FAUX,FAUX,FAUX,FAUX,FAUX,FAUX};                         // si VRAI saisie en cours
+int   minValeurs[NBVALEURS]={0,0,10,2,0,0};                                             // valeur mini pour saisie
+int   maxValeurs[NBVALEURS]={MAXDAC,MAXDAC,MAXPERRAMP,MAXSTEPRAMP,9,9};// valeur maxi pour saisie
+
+#define LENUNITVALEUR 3
+char* unitValeurs="mV\0mA\0mS\0  \0mV\0mV\0";                                         // unités des valeurs
 
 int p0,p1;
 
@@ -161,43 +160,62 @@ int p0,p1;
 
 uint8_t dac[2] = {UOUT, DACI};
 
-/* ---------------------- menus ------------------------------ */
+/* ---------------------- menus ------------------------------ 
+ *  mécanisme 
+ *  
+ *  dimensions                                                                                                   */
+ 
+#define LENENTVMENU 8  // longueur texte entrées menu vertical
+#define LENENTHMENU 8  // longueur texte entrées menu horizontal
+#define MAXLEVMENU  3  // nombre de niveaux maxi
+#define MAXENTMENU  5  // nombre d'entrée maxi d'un niveau
 
+/* navigation                                                                                                    */
+
+int     levelMenu=-1;                        // niveau du menu courant (0 à n) ; pointe dans les piles
+int     choixMenu[MAXLEVMENU]={0,0,0};       // pile des choix (n° de l'entrée choisie dans chaque menu)
+int     numerMenu[MAXLEVMENU]={0,0,0};       // pile des menus choisis 
+
+/* chaque niveau de menu est décrit par les tables générales du système de menu
+ * et les tables des entrées du niveau (accédées par les tables de pointeurs)
+ * 
+ * tables générales
+ * 
+ * table du nombre d'entrées pour chaque menu                                                                          */
+int     nbentMenu[]={4,2,5};
+/* table du modèle de menu (0 vertical, 1 horizontal)                                                                  */
+int     modelMenu[]={0,1,0};
+/* table de la position horizontale pour chaque menu                                                                   */
+int     hposMenu[] ={7,10,65+7};   // texte
+/* table de la position verticale pour chaque menu                                                                     */
+int     vposMenu[] ={75,110,75};      
+/* table de la position verticale du curseur pour chaque menu                                                          */
+int     hpcMenu[]  ={0,0,65};    
+
+/* tables des entrées de chaque menu
 
 /* menu 0 */
 char*  lev0Menu  = "tension courant rampe   st/stop \0";
 int    typ0Menu[]= {7,7,1,8};
 int    par0Menu[]= {0,1,2,0};
 bool   cmp0Menu[]= {VRAI,VRAI,FAUX,FAUX};
+int    foloMenu[]= {1,1,0,0};
 /* menu 1 */
 char*  validMenu = "Valider Abandon \0";
 int    typ1Menu[]= {5,6};
 int    par1Menu[]= {0,0};
 bool   cmp1Menu[]= {FAUX,FAUX};
+int    fol1Menu[]= {0,0};
 /* menu 2 */
 char*  rampeMenu = "periode nb stepsvoltmin voltmax retour\0";
 int    typ2Menu[]= {7,7,7,7,3};
 int    par2Menu[]= {2,3,4,5,1};
 bool   cmp2Menu[]= {VRAI,VRAI,VRAI,VRAI,FAUX};
+int    fol2Menu[]= {0,0,0,0,0};
 
+/* tables de pointeurs sur les tabmles d'entrées                                                                         */
 
-#define LENENTVMENU 8  // longueur texte entrées menu vertical
-#define LENENTHMENU 8  // longueur texte entrées menu horizontal
-#define MAXLEVMENU  3  // nombre de niveaux maxi
-#define MAXENTMENU  5  // nombre d'entrée maxi d'un niveau
-
-/* 
- * 1 table du nombre d'entrées pour chaque menu                                                                          */
-int     nbentMenu[]={4,2,5};
-/* 1 table du modèle de menu (0 vertical, 1 horizontal)                                                                  */
-int     modelMenu[]={0,1,0};
-/* 1 table de la position horizontale pour chaque menu                                                                   */
-int     hposMenu[] ={7,10,65+7};   // texte
-/* 1 table de la position verticale pour chaque menu                                                                     */
-int     vposMenu[] ={75,110,75};      
-/* 1 table de la position verticale du curseur pour chaque menu                                                          */
-int     hpcMenu[]  ={0,0,65};    
-/* 1 table de pointeurs sur l'état "sélectionnable" des entrées du menu                                                                */
+/* 1 table de pointeurs sur l'état "sélectionnable" des entrées du menu                                                  */
 bool*   compMenu[] ={cmp0Menu,cmp1Menu,cmp2Menu}; 
 /* 1 table de pointeurs sur les libellés des entrées de menus :                                                          */
  char*  entryMenu[]={lev0Menu,validMenu,rampeMenu};
@@ -216,20 +234,16 @@ bool*   compMenu[] ={cmp0Menu,cmp1Menu,cmp2Menu};
  * si type 7 le n° du param à valoriser ; si type 1 le n° du menu suivant ; si type 3 le n° du menu auquel revenir          */
 int*    paramMenu[]={par0Menu,par1Menu,par2Menu};
 
- /* des pointeurs */
-int     levelMenu=-1;  // niveau du menu courant (0 à n) ; pointe dans les piles
-int     choixMenu[MAXLEVMENU]={0,0,0};       // pile des choix (n° de l'entrée choisie)
-int     numerMenu[MAXLEVMENU]={0,0,0};       // pile des menus choisis 
-
-
-//              *(typeMenu[numerMenu[levelMenu]]+choix1)
-//              *(entryMenu[numerMenu[levelMenu]]+nbitem*LENENTHMENU+j)
-//              nbentMenu[numerMenu[levelMenu]]
-
 
 #define LENCOMP  6     // longueur chaine complémentaire
 char    comptMenu[MAXENTMENU*LENCOMP+1]; // 4*6
 uint8_t statusMenu = 0;
+  /* statusMenu!=0 -> menu en cours, scrutation codeur
+     de 1 à 3 Menu 1 vertical
+     de 4 à 8 Menu 2 horizontal
+      "choix1 ou 2" variable de l'option courante   
+      "prechoix1 ou 2" choix précédent (pour effacer le curseur)
+  */
 int choix1 = 0, prechoix1 = 0;  /* position dans le menu/pos précédente pour effacer le curseur */
 
 int m0,m1;      
@@ -256,16 +270,16 @@ int voltout[2], oldVoltout[2];
 #define OFF LOW
 
 float a, a0, b, b0, c, c0;
-bool fastTft  = FAUX;       /* si VRAI, rampe rapide en cours, pas de maj de l'affichage */
+bool fastTft  = FAUX;       // si VRAI, rampe rapide en cours, pas de maj de l'affichage 
 long tmpRamp=millis();      // temps dernier step rampe 
-bool arretRampe = VRAI;     /* si VRAI pas de rampe en cours */
+bool arretRampe = VRAI;     // si VRAI pas de rampe en cours 
 bool show     = FAUX;
 bool testDaci = FAUX;
 bool poussoir = OFF;
-bool tempChg  = VRAI;       /* indique que la temp a changé -> maj de l'affichage */
-bool perRampChg  = VRAI;    /* indique que la période de la rampe a changé -> maj de l'affichage */
-bool stepRampChg = VRAI;    /* indique que le nbre de step de la rampe a changé -> maj de l'affichage */
-bool menuChg  = VRAI;       /* indique que le menu a changé -> maj de l'affichage */
+bool tempChg  = VRAI;       // indique que la temp a changé -> maj de l'affichage 
+bool perRampChg  = VRAI;    // indique que la période de la rampe a changé -> maj de l'affichage 
+bool stepRampChg = VRAI;    // indique que le nbre de step de la rampe a changé -> maj de l'affichage 
+bool menuChg  = VRAI;       // indique que le menu a changé -> maj de l'affichage 
 
 /* prototypes */
 
@@ -312,8 +326,8 @@ void setup() {
   measure.config(PORT_SSADC,DDR_SSADC,BIT_SSADC,INTADC,RSHUNT);
 #endif // CS5550
 
-  /* Timer 1 */
-/*  
+  /* Timer 1  pour générer un oscillateur pour la pompe à diodes du proto
+   *  
   pinMode(POMPE, OUTPUT);
   // TCCR1A, TCCR1B control reg Timer 1
   TCCR1A = 0x00 ;
@@ -365,13 +379,6 @@ Serial.print(" 1");
   attachInterrupt(digitalPinToInterrupt(COD_INT1), isrCod, CHANGE);
   attachInterrupt(digitalPinToInterrupt(COD_INT2), isrCod, CHANGE);
 
-/*  Serial.println("'A' toogle start/stop ramp ;");
-  Serial.println("'B' toogle manual rotary mode Volts ;");
-  Serial.println("'C' toogle manual rotary mode Amps ;");
-  Serial.println("'D' test dac I");
-  Serial.println("Poussoir -> Menu");
-*/
-
   /* Menu */
   
   memset(comptMenu,0x00,sizeof(comptMenu));
@@ -409,7 +416,7 @@ void loop() {
   }
 #endif
 
-  /* poussoir */
+  /* poussoir (positionne la variable "poussoir" ON ou OFF) */
 
   if (millis() > (tmpPouss + perPouss)) {
 
@@ -424,27 +431,25 @@ void loop() {
   
   /* rampe & test dac i */
   
-  if (millis() > (tmpRamp+params[NPARAMPERRAMP])) {
+  if (millis() > (tmpRamp+valeurs[NVALEURPERRAMP])) {                 // valeurs[NVALEURPERRAMP] est la période de la rampe
     tmpRamp = millis();
-//    Serial.print("rampe1 ");Serial.println(arretRampe);
     if (!arretRampe) {
       if(!fastTft){
         serialShow(0, volt[ptrdac[0]]); //Serial.println();
         serialShow(1, volt[ptrdac[1]]); //Serial.println();
-        //measure.show();
       }
-      //Serial.println("rampe2");
-      ptrdac[0]++;
+      ptrdac[0]++;                                                  // avance le step courant de la rampe
       if (ptrdac[0] >= NBRAMP) {
         ptrdac[0] = 0;
       }
-      params[NPARAMVOLTS] = volt[ptrdac[0]];
-      setVoltsAmps.write(0, volt[ptrdac[0]]);
+      valeurs[NVALEURVOLTS] = volt[ptrdac[0]];                      // valeurs[NVALEURVOLTS] est la consigne de tension de sortie ; 
+                                                                    // ptrdac[0] est le n° de step courant de la rampe
+                                                                    // volt[ptrdac[0]] est la tension du step courant de la rampe
+      setVoltsAmps.write(0, volt[ptrdac[0]]);                       // charge la tension de sortie dans le dac tension
     }
 
     if (testDaci) {
-      //Serial.print("C ");
-      serialShow(1, volt[ptrdac[1]]); //Serial.println();
+      serialShow(1, volt[ptrdac[1]]); 
       ptrdac[1]++;
       if (ptrdac[1] >= MAXDAC) {
         ptrdac[1] = 0;
@@ -468,23 +473,27 @@ void loop() {
 
   /* codeur */
 
-  for(int i=0;i<NBPARAMS;i++){
-    if(statusParams[i] && params[i] != codeur) {saisieValCodeur(&params[i],i);
-      Serial.print(" codeur ");Serial.print(codeur);Serial.print(" param");Serial.print(i);Serial.print(" ");Serial.println(params[i]);  
-      if(i==NPARAMPERRAMP && params[i]<FASTPERRAMP){fastTft=VRAI;}
+  for(int i=0;i<NBVALEURS;i++){
+    if(statusValeurs[i] && (valeurs[i] != codeur)) {saisieValCodeur(&valeurs[i],i);                   // saisie en cours sur le param i et la valeur a changé dans codeur
+                                                                                                   // donc maj codeur->valeurs[i]
+      Serial.print(" codeur ");Serial.print(codeur);Serial.print(" param");Serial.print(i);Serial.print(" ");Serial.println(valeurs[i]);  
+      if(i==NVALEURPERRAMP && valeurs[i]<FASTPERRAMP){fastTft=VRAI;}
       else {fastTft=FAUX;}
-      if(i!=NPARAMVOLTS && i!=NPARAMAMPS){
-        strncpy(comptMenu+LENCOMP*choix1,paramItem(params[i],unitParams+i*LENUNITPARAM),LENCOMP);
+      if(i!=NVALEURVOLTS && i!=NVALEURAMPS){                                                         // saisie en cours sur param rampe
+        strncpy(comptMenu+LENCOMP*choix1,paramItem(valeurs[i],unitValeurs+i*LENUNITVALEUR),LENCOMP);
         menu1(choix1,"*",comptMenu);
       }
     }
   }
   
   /* statusMenu!=0 -> menu en cours, scrutation codeur
-     de 1 à 3 Menu 1 vertical
-     de 4 à 8 Menu 2 horizontal
+     états 1 à 3 Menu 1 vertical
+        1 le menu vient d'être affiché (passer à 2 si le poussoir est off)
+        2 scutation codeur pour changement de ligne si poussoir ON passer à 3 pour valider la positipon au relachement
+        3 attente relachement du poussoir ; 
+              si poussoir relaché afficher * et passer à 4 ; faire le traitement selon type de l'entrée
+     états 4 à 8 Menu 2 horizontal
       "choix1 ou 2" variable de l'option courante   
-      "currMenu" libellés des items (longueur 8)
       "prechoix1 ou 2" choix précédent (pour effacer le curseur)
   */
   if (statusMenu > 0){choixCodeur(&choix1,&prechoix1);}  
@@ -507,7 +516,7 @@ void loop() {
     statusMenu = 1; menuChg=VRAI;
     Serial.println("M1");
     testDaci = FAUX;
-    memset(statusParams,FAUX,NBPARAMS);
+    memset(statusValeurs,FAUX,NBVALEURS);
     //arretRampe = VRAI;
     showTft();    
     codeur = 0; choix1 = 0; prechoix1 = 0;
@@ -533,12 +542,12 @@ void loop() {
     switch(*(typeMenu[m1]+choix1)){
       case 1: choixMenu[levelMenu]=choix1;
               entreMenu();initMenu(m1);
-              break; // entrée menu vertical (init complt et save params)
+              break; // entrée menu vertical (init complt et save valeurs)
       case 2: restoreMenu();   // restore param
               break; // back sans effet
       case 3: choixMenu[levelMenu]=0;
               entreMenu();effaceLigneFin(TFTH-TFTCH-4);
-              break; // entrée menu horizontal (ni complt ni save params)
+              break; // entrée menu horizontal (ni complt ni save valeurs)
       case 4: levelMenu--;choix1=choixMenu[levelMenu];initMenu(numerMenu[levelMenu]);
               break; // back validé
       case 5: levelMenu-=2;choix1=choixMenu[levelMenu];initMenu(numerMenu[levelMenu]);
@@ -547,12 +556,14 @@ void loop() {
       case 6: levelMenu--;m1=numerMenu[levelMenu];
               restoreMenu();affichMenu(m1);effaceLigneFin(TFTH-TFTCH-4);effaceLigneFin(TFTH-TFTCH+2);
               break; // back 2 niveaux sans effet
-      case 7: startSaisie(FAUX,*(paramMenu[m1]+choix1),0);
-              Serial.print(" param=");Serial.print(params[*(paramMenu[m1]+choix1)]);Serial.print(" codeur=");Serial.print(codeur);
+      case 7: startSaisie(FAUX,*(paramMenu[m1]+choix1),0);      // (paramMenu[m1] pointe la table des paramètres du menu courant
+                                                                // (paramMenu[m1]+choix1 pointe le paramètre de l'entrée courante du menu courant
+                                                                //    donc le numéro de valeur (volt/amp/periode etc)
+              Serial.print(" param=");Serial.print(valeurs[*(paramMenu[m1]+choix1)]);Serial.print(" codeur=");Serial.print(codeur);
               break; // saisie num
       case 8: arretRampe = !arretRampe;statusMenu=1;
               //Serial.print(" Rampe ");Serial.println(arretRampe);
-              if(!arretRampe && params[NPARAMPERRAMP]<FASTPERRAMP){fastTft=VRAI;}
+              if(!arretRampe && valeurs[NVALEURPERRAMP]<FASTPERRAMP){fastTft=VRAI;}
               break;  // start/stop
       default:break;
     }
@@ -568,15 +579,15 @@ void loop() {
         } else {
           arretRampe = VRAI;
         }; break;
-      case 'B': if (statusParams[0] == VRAI) {
-          statusParams[0] = FAUX;
+      case 'B': if (statusValeurs[0] == VRAI) {
+          statusValeurs[0] = FAUX;
         }
         else {
           startSaisie(FAUX,0,0);
         }
         break;
-      case 'C': if (statusParams[1] == VRAI) {
-          statusParams[1] = FAUX;
+      case 'C': if (statusValeurs[1] == VRAI) {
+          statusValeurs[1] = FAUX;
         }
         else {
           startSaisie(FAUX,1,0);
@@ -584,8 +595,8 @@ void loop() {
         break;
       case 'D': if (testDaci == FAUX) {
           testDaci = VRAI;
-          statusParams[0]=FAUX;
-          statusParams[1]=FAUX;
+          statusValeurs[0]=FAUX;
+          statusValeurs[1]=FAUX;
           arretRampe = VRAI;
           statusMenu = 0; menuChg=VRAI;
         }
@@ -618,15 +629,16 @@ void menu10(char* complt)     // menu vertical
   }
 }
 
-void menu1(int numitem, char* arrow,char* complt)
+void menu1(int numitem, char* arrow,char* complt)                 // affiche une ligne de menu vertical + complt et curseur éventuel
+                                                                  // numitem n° de l'entrée
 {
   m0=numerMenu[levelMenu]; // num menu courant
   char item[LENENTHMENU+LENCOMP+1];
   for (int j = 0; j < LENENTHMENU; j++) {
-    item[j] = *(entryMenu[m0]+numitem*LENENTHMENU+j);
+    item[j] = *(entryMenu[m0]+numitem*LENENTHMENU+j);             // libellé de l'entrée -> item[]
   } 
     for (int j = 0; j < LENCOMP; j++) {
-    item[j+LENENTHMENU] = complt[numitem * LENCOMP +j];
+    item[j+LENENTHMENU] = complt[numitem * LENCOMP +j];           // chaine complémentaire -> item[]
   } item[LENENTHMENU+LENCOMP] = '\0';
   
   Serial.print(" menu1(");Serial.print(item);Serial.print(",");
@@ -634,7 +646,7 @@ void menu1(int numitem, char* arrow,char* complt)
 /*  Serial.print(levelMenu,HEX);Serial.print("-");Serial.print(numerMenu[levelMenu]);Serial.print("-");
   for(int j=0;j<12;j++){Serial.print(*(entryMenu[numerMenu[levelMenu]]+j));};Serial.println(); */
   tft.setTextSize(1);
-  tft.setCursor(hposMenu[m0],vposMenu[m0] + (numitem * TFTCH));
+  tft.setCursor(hposMenu[m0],vposMenu[m0] + (numitem * TFTCH));   // curseur début ligne de l'entrée +1 caractère
   tft.print(item);
   tft.setCursor(hpcMenu[m0],vposMenu[m0] + (numitem * TFTCH));
   if (numitem == choix1) {tft.print(arrow[0]);}
@@ -678,7 +690,7 @@ void effaceLigneFin(int pos)
 
 void restoreMenu()
 {
-  for(m0=0;m0<MAXENTMENU;m0++){p0=*(paramMenu[m1]+m0);params[p0]=backParams[p0];}   // restore params
+  for(m0=0;m0<MAXENTMENU;m0++){p0=*(paramMenu[m1]+m0);valeurs[p0]=backValeurs[p0];}   // restore valeurs
     levelMenu--;choix1=choixMenu[levelMenu];initMenu(numerMenu[levelMenu]);
 }
 
@@ -694,11 +706,11 @@ void initMenu(int menu)
   memset(comptMenu,0x00,sizeof(comptMenu));
   for(m0=0;m0<MAXENTMENU;m0++){
     p0=*paramMenu[menu]+m0; // n° du paramètre de l'entrée de menu
-    p1=params[p0];          // valeur
-    backParams[p0]=p1;      // save param
+    p1=valeurs[p0];          // valeur
+    backValeurs[p0]=p1;      // save valeur
     if(*(compMenu[menu]+m0)){
-      strncpy(comptMenu+LENCOMP*m0,paramItem(p1,unitParams+p0*LENUNITPARAM),LENCOMP);}
-//   Serial.print(" param");Serial.print(params[2+m0]);Serial.print("=");Serial.print(p0);delay(100);
+      strncpy(comptMenu+LENCOMP*m0,paramItem(p1,unitValeurs+p0*LENUNITVALEUR),LENCOMP);}
+//   Serial.print(" param");Serial.print(valeurs[2+m0]);Serial.print("=");Serial.print(p0);delay(100);
   }
   Serial.print("\nmenu N°");Serial.print(m1);Serial.print(" compt=");Serial.println(comptMenu);
 }
@@ -706,18 +718,18 @@ void initMenu(int menu)
 void saisieValCodeur(int* valcodeur, int numunit)    /* valcodeur sortie modifiée ; numunit entrée numéro paramètre saisi */
 {
   *valcodeur = codeur;
-  if (*valcodeur <= minParams[numunit]) {
-    *valcodeur = minParams[numunit];  
+  if (*valcodeur <= minValeurs[numunit]) {
+    *valcodeur = minValeurs[numunit];  
     codeur = *valcodeur;
   }
-  if (*valcodeur >= maxParams[numunit]) {
-    *valcodeur = maxParams[numunit];
+  if (*valcodeur >= maxValeurs[numunit]) {
+    *valcodeur = maxValeurs[numunit];
     codeur = *valcodeur;
   }
 
   switch(numunit){
-    case 0: params[0]=*valcodeur;break; //setVoltsAmps.write(numunit,*valcodeur);break;   // volts
-    case 1: params[1]=*valcodeur;break; //setVoltsAmps.write(numunit,*valcodeur);break;   // amps
+    case 0: valeurs[0]=*valcodeur;break; //setVoltsAmps.write(numunit,*valcodeur);break;   // volts
+    case 1: valeurs[1]=*valcodeur;break; //setVoltsAmps.write(numunit,*valcodeur);break;   // amps
     case 2: perRampChg=VRAI;break;                // periode rampe
     case 3: stepRampChg=VRAI;break;               // nb step rampe
     default:break;
@@ -728,14 +740,20 @@ void saisieValCodeur(int* valcodeur, int numunit)    /* valcodeur sortie modifi�
 
 void startSaisie(bool fast,int numunit,int menu)  // débute la saisie d'un paramètre
                                                   // elle se termine avec la dernière étape du menu (OFF et 7 ou OFF et 3)
+                                                  // numunit est la valeur du paramètre de l'entrée courante du menu courant
+                                                  // donc le numéro d'entrée dans valeurs[]
 {
   fastTft    = fast;
-  memset(statusParams,FAUX,NBPARAMS);
-  statusParams[numunit]=VRAI;
+  memset(statusValeurs,FAUX,NBVALEURS);             // désactive la saisie sur tous les valeurs[]
+  statusValeurs[numunit]=VRAI;                     // active la saisie sur valeurs[numunit]
   statusMenu = menu;  menuChg=VRAI;
-  oldParam   = params[numunit];
-  codeur     = params[numunit];
+  oldValeur   = valeurs[numunit];                   // sauve la valeur
+  codeur     = valeurs[numunit];                   // charge le codeur
   timeIsrCod = 0;
+
+  /* maintenant les mouvements du codeur modifient la variable codeur depuis la valeur initiale valeurs[numunit] 
+   * c'est le poussoir qui stoppe la saisie 
+  */
 }
 
 char* paramItem(int value,char* unit)
@@ -769,7 +787,7 @@ void showTft()  // récupération valeurs et affichage Tft
   }
   affTftVoltAmp(voutM, ioutM, vcollectorM, (float)(analogRead(dac[1]) * 5) / 1024, (float)(analogRead(ILIMIT) * 5) / 1024);
 */  
-  affTftVoltAmp(0, 0, 0,(float)params[0]*BINV, (float)params[1]*BINA);
+  affTftVoltAmp(0, 0, 0,(float)valeurs[0]*BINV, (float)valeurs[1]*BINA);
 
 }
 
