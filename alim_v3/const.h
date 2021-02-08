@@ -1,7 +1,7 @@
 #ifndef CONST_H_INCLUDED
 #define CONST_H_INCLUDED
 
-#define VERSION "2.0_"
+#define VERSION "3.0_"
 
 //#define INA219
 #define CS5550

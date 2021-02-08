@@ -80,13 +80,13 @@ long timeIsrCod = 0; /* timeIsrcod millis() de la précédente Interruption     
 long t;              /* local de l'Isr pour calcul durée entre interruptions  */
 uint16_t cntIsr=0;   /* cnt isr pour debug */
 
-#define TINCR4 100
-#define TINCR3 200
-#define TINCR2 300
+#define TINCR4 125
+#define TINCR3 50
+#define TINCR2 20
 
-#define INCR4 16
-#define INCR3 8
-#define INCR2 2
+#define INCR4 5
+#define INCR3 50
+#define INCR2 500
 #define INCR1 1
 
 /* --------------- poussoir (actif haut) ---------------- */
@@ -954,39 +954,23 @@ void printfix(int value)
 
 /* gestion interruptions */
 
-void codIntIncrS()              /* gestion increment selon vitesse rotation */
+void codIntIncr(int mul)
 {
   t = millis() - timeIsrCod;
-  if (t < TINCR4 && codeur>INCR4*2) {
-    codeur -= INCR4;
-  }
-  else if (t < TINCR3 && codeur>INCR3*3) {
-    codeur -= INCR3;
-  }
-  else if (t < TINCR2 && codeur>INCR2*4) {
-    codeur -= INCR2;
-  }
-  else {
-    codeur -= INCR1;
-  }
-  timeIsrCod = millis();
-}
 
-void codIntIncrA()
-{
-  t = millis() - timeIsrCod;
-  if (t < TINCR4 && codeur>INCR4*2) {
-    codeur += INCR4;
+  if (t<TINCR4 && t>=TINCR3){        // && codeur>INCR4*2) {
+    codeur += INCR4*mul;
   }
-  else if (t < TINCR3 && codeur>INCR3*3) {
-    codeur += INCR3;
+  else if (t<TINCR3 && t>=TINCR2){   // && codeur>INCR3*3) {
+    codeur += INCR3*mul;
   }
-  else if (t < TINCR2 && codeur>INCR2*4) {
-    codeur += INCR2;
+  else if (t<TINCR2 ){   // && codeur>INCR2*4) {
+    codeur += INCR2*mul;
   }
   else {
-    codeur += INCR1;
+    codeur += INCR1*mul;
   }
+
   timeIsrCod = millis();
 }
 
@@ -999,9 +983,9 @@ void isrCod()
   test=etat&0x0f;
 
   if (test == B0111 ) {
-    codIntIncrA();
+    codIntIncr(1);
   } //codeur++;}
   else if (test == B1011 ) {
-    codIntIncrS();
+    codIntIncr(-1);
   } //codeur--;}
 }
