@@ -75,10 +75,16 @@ int codeur = 0;     // la variable mouvementée lors des interruptions
 int oldValeur;      // lorsque la saisie d'une valeur est initiée avec startsaisie(), la valeur 
                     // est archivée pour permettre sa restauration si la saisie n'est pas validée.
                   
-byte etat = 0, test = 0;
-long timeIsrCod = 0; /* timeIsrcod millis() de la précédente Interruption     */
-long t;              /* local de l'Isr pour calcul durée entre interruptions  */
-uint16_t cntIsr=0;   /* cnt isr pour debug */
+#define CODUP  B0111
+#define CODOWN B1011
+#define UP     1
+#define DOWN   0
+ 
+byte etat = CODUP, test = 0;
+byte dirCod = UP;
+long timeIsrCod = 0;  /* timeIsrcod millis() de la précédente Interruption     */
+long t;               /* local de l'Isr pour calcul durée entre interruptions  */
+uint16_t cntIsr=0;    /* cnt isr pour debug */
 
 #define TINCR4 125
 #define TINCR3 50
@@ -981,11 +987,13 @@ void isrCod()
 
   //test = (etat | B11110000) - B11110000; //test des 4 bits de poids faible
   test=etat&0x0f;
-
-  if (test == B0111 ) {
-    codIntIncr(1);
-  } //codeur++;}
-  else if (test == B1011 ) {
-    codIntIncr(-1);
-  } //codeur--;}
+ 
+  if (test == CODUP ) {
+    if(dirCod==UP || timeIsrCod > TINCR4){codIntIncr(1);dirCod=UP;}
+    else {etat = CODUP;dirCod=UP;}
+  }
+  else if (test == CODOWN ) {
+    if(dirCod==DOWN || timeIsrCod > TINCR4){codIntIncr(-1);dirCod=DOWN;}
+    else {etat = CODOWN;dirCod=DOWN;}
+  }
 }
