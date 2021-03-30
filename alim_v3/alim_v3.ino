@@ -121,6 +121,26 @@ uint8_t savled;
 #define TBLINKON 10
 #define TBLINKOFF 1990
 
+/* ------------------------ KBD -------------------------- */
+
+#define KCHECKADC   6                                           // KBD ADC pin Nb
+#define KADMUXVAL   0 | (1<<REFS1) | (1<<REFS0) | KCHECKADC     // internal 1,1V ref + ADC input for kbd
+#define NBKEY       16
+#define LEFT   3
+#define RIGHT 11
+#define UP     8
+#define DOWN   6
+#define ONOFF 13
+#define VOLT   1
+#define AMP    5
+uint16_t keys[]={0,32,92,155,212,274,336,393,455,514,577,635,732,1000,1000,1023};
+uint8_t key=0,k=0,k1=0,k0=0;
+long tmpKbd = millis();		  							// last key test time
+#define PERKBDON  15											// ON debounce
+#define PERKBDOFF 60											// OFF debounce
+int  perKbd = PERKBDOFF;                  // interval between new key test 
+uint16_t nbk=0;
+
 /* valeurs (volts, amps, periode rampe, step rampe, voltmin rampe, voltmax rampe */
 
 #ifdef  MCP4921
@@ -266,6 +286,12 @@ float iout = 0, ioutM = 0, vout = 0, voutM = 0;
 #define LTEXT0 32
 char text0[LTEXT0], text1[12];
 
+/* navigation saisie numériquez kbd */
+
+uint8_t digit=0;      // digit courant
+int rg[]={10,100,1000,10000,100000};
+#define MAXDIG 4
+
 /* divers  */
 
 uint8_t bid = 0;
@@ -302,6 +328,7 @@ void choixCodeur(int* choix, int* prechoix);      // saisie du codeur pour le ch
 void saisiePerRamp();
 void startSaisie(bool fast,int numunit,int menu);
 char* paramItem(int value,char* unit);
+void setupValeur(int* val,int inc);
 
 void setup() {
 
@@ -372,7 +399,7 @@ pinMode(BLTFT,OUTPUT);digitalWrite(BLTFT,HIGH);
   memset(comptMenu,0x00,sizeof(comptMenu));
 
   Serial.println(" ready");
-  
+
 }
 
 void loop() {
@@ -415,6 +442,20 @@ void loop() {
     
     bitSet(DDR_POUSSOIR,BIT_POUSSOIR);if(savled!=0){bitSet(PORT_POUSSOIR,BIT_POUSSOIR);}  // else bitClear(PORT_POUSSOIR,BIT_POUSSOIR);
     tmpPouss = millis();
+  }
+
+  /* KBD */
+
+  if (millis() > (tmpKbd + perKbd)) {
+    tmpKbd = millis();
+    perKbd = PERKBDON;
+    k=getKbd();
+    if(k!=k1){k1=k;nbk=1;}						// same key should be found twice                     
+    else if(nbk>=2 && k!=k0){key=k;Serial.println(k);       // same key found twice should be not = to previous key 
+      k0=k;
+      if(k=16){perKbd=PERKBDOFF;}           // if no key wait for next kbd reading
+    }
+    else nbk++;
   }
   
   /* rampe & test dac i */
@@ -493,7 +534,7 @@ void loop() {
     Serial.println("M3");
   }
 
-  if (poussoir == OFF && statusMenu == 1) {       // poussoir relaché -> scrutation codeur 
+  if (poussoir == OFF && statusMenu == 1) {       // poussoir relaché -> scrutation codeur et kbd
     statusMenu = 2;  menuChg=VRAI;
     Serial.println("M2");
     //delay(100);
@@ -560,7 +601,7 @@ void loop() {
     Serial.println();
   }
  
-  if (poussoir == ON && statusMenu == 90) {          // poussoir relaché -> saiise numérique valide 
+  if (poussoir == ON && statusMenu == 90) {           // poussoir relaché -> saiise numérique valide 
                                                       // ajouter menu de validation horizontal (">Valid  Annul")
     Serial.print("M90 -- transfert ; valeur=");Serial.print(valeurs[*(paramMenu[m1]+choix1)]);Serial.print(" codeur=");Serial.println(codeur);
     valeurs[*(paramMenu[m1]+choix1)]=codeur;          // si "Valid" il faut transférer codeur dans la valeur 
@@ -571,6 +612,15 @@ void loop() {
       default:break;          
     }
     statusMenu = 0;  menuChg=VRAI;
+  }
+  else if(key!=0){
+    switch(key){
+      case    UP:setupValeur(&valeurs[*(paramMenu[m1]+choix1)],+1);key=0;break;
+      case  DOWN:setupValeur(&valeurs[*(paramMenu[m1]+choix1)],-1);key=0;break;
+      case  LEFT:if(digit<MAXDIG){digit++;}key=0;break;
+      case RIGHT:if(digit>0){digit--;}key=0;break;      
+      default:break;
+    }
   }
 
 
@@ -996,4 +1046,40 @@ void isrCod()
     if(dirCod==DOWN || timeIsrCod > TINCR4){codIntIncr(-1);dirCod=DOWN;}
     else {etat = CODOWN;dirCod=DOWN;}
   }
+}
+
+float adcRead(uint8_t admuxval,float factor, uint16_t offset, uint8_t ref,uint8_t dly)      // dly=1 if ADC halted
+{
+    uint16_t a=0;
+    
+    ADCSRA |= (1<<ADEN);                    // ADC enable to write ADMUX
+    ADMUX   = admuxval;
+    ADCSRA  = 0 | (1<<ADEN) | (1<<ADSC) | (1<<ADIF) | (1<<ADPS2) | (0<<ADPS1) | (0<<ADPS0);   // ADC enable + start conversion + prescaler /16
+
+    delayMicroseconds(40+dly*48);           // ok with /16 prescaler @8MHz
+
+    a=ADCL;
+    a+=ADCH*256;
+//  Serial.println();Serial.print(" a=");Serial.print(a);Serial.print("  factor=");Serial.println(factor*100);
+    return (float)(a*factor-(offset))+ref;
+}
+
+uint8_t getKbd()
+{
+  uint8_t i;
+  uint16_t k=(uint16_t)adcRead(KADMUXVAL,1,0,0,0);
+  if(k<keys[NBKEY] && k!=0){Serial.print("adc=");Serial.println(k);} // print only if a key is pressed
+  for(i=0;i<NBKEY;i++){
+    if(k<keys[i]){break;}
+  }
+  return i;
+}
+
+void setupValeur(int* val,int inc)
+{
+  int value=*val;
+  int valup=(*val/rg[digit])*rg[digit];
+  int valdig=value-valup;if(digit!=0){valdig/=rg[digit-1];}
+  
+  if(valdig<9 && valdig>0){*val+=rg[digit]*inc;}
 }
